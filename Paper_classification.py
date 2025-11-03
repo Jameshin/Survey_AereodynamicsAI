@@ -32,7 +32,7 @@ classification_criteria = [
     "12) Etc : None of the aboves"
 ]
 
-# 📄 PDF에서 Abstract 부분만 추출하는 함수
+#  PDF에서 Abstract 부분만 추출하는 함수
 def extract_abstract_from_pdf(paper_file_path):
     """PDF 파일에서 Abstract(초록) 부분만 추출"""
     doc = fitz.open(paper_file_path)
@@ -49,7 +49,7 @@ def extract_abstract_from_pdf(paper_file_path):
     else:
         return "Abstract not found"
 
-# 📄 PDF에서 초기 300단어 추출하는 함수
+#  PDF에서 초기 300단어 추출하는 함수
 def extract_first_300_words(paper_file_path):
     """PDF 파일에서 처음 300단어 추출"""
     doc = fitz.open(paper_file_path)
@@ -64,71 +64,49 @@ def extract_first_300_words(paper_file_path):
     # 공백 기준으로 단어 단위로 분할
     words = re.findall(r'\S+', text)  # 공백이 아닌 문자들(단어) 추출
 
-    # 300단어까지만 가져와서 반환
-    first_300_words = " ".join(words[:300])
+    # 500단어까지만 가져와서 반환
+    first_300_words = " ".join(words[:500])  # 500단어일 때 결과가 괜찮았음
 
     return first_300_words if first_300_words else "No text found"
 
-# 📝 ChatGPT에 보낼 프롬프트 생성
+#  ChatGPT에 보낼 프롬프트 생성
 def generate_prompt(extract_text):
     return f"""
     논문의 내용을 분석하여 다음 정보를 한글로 제공해줘:
 
-    1. **이 논문은 아래 12종 분류법 중 어느 카테고리에 속하는지? (복수 가능)**  
+    1. **이 논문은 아래 60여종 분류 중 어느 카테고리에 속하는지 분류해줘(복수 가능). 분류번호를 2개 수준으로 부여했어. 예를 들어, 1-1)부터 1-6)까지는 상위 수준 분류번호인 "1) Compressible flow physics"의 하위 수준 분류번호들이야.**  
+       **분류번호는 하위 수준 분류번호만 가지게 분류해줘. 예외적으로, 분류번호 13)은 하위 수준이 없으니 그냥 상위 수준 분류번호로 써줘. 즉, 상위 수준은 하위 수준 분류번호를 보면 아니까 상위 수준 분류번호는 "13) Review or survey papers"을 제외하고 꼭 빼야 된다.**
+       **그리고, 분류할 때 되도록 Title, Abstract, Keywords라는 단어에 가까운 단어들이 해당 논문의 성격을 가장 많이 규정하기 때문에, 그 단어들을 더 중점적으로 감안해서 분류해줘. **
+       **Introduction이라는 단어 이후에 나오는 단어들은 전반적인 동향과 관련되기 때문에 실제 논문과 관련없는 키워들이 많이 등장하니 무시하는게 나아.**
+       **그래서, 논문의 파일명(혹은 title)과 Abstract, Keywords의 단어들과 내용들로 판단을 해주면 좋겠어." **
        {", ".join(classification_criteria)}
     2. **이 논문에서의 새로운 발견이나 성과는 무엇인가?**  
+
+       **같은 논문은 항상 동일한 분류를 유지해야 하니 여러 번 분류해보고 가장 높은 확률의 분류번호들을 적어줘. 너의 판단이 매번 달라지는 경우가 많았어.**
+       **각 논문별로 분류가 된 다음 상위 수준 분류번호가 여전히 들어가는 경우가 있는데, 13)을 제외하고 상위 수준 분류번호들이 안 나오게 다시 한 번 확인해줘.**
+       **결과를 analysis_results.txt에 쓸 때 이모티콘은 안들어가게 해주면 좋겠어.**
 
     논문의 내용:
     {extract_text}
 
     결과 형식 예시:
-    1. 분류번호: 1), 3)
+    1. 분류번호: 1-2), 7-3), 11-1)
     2. 발견 혹은 성과: 
        - (...) 
        - (...)
     """
 
-# 📡 ChatGPT API 요청 함수
+#  ChatGPT API 요청 함수
 def ask_chatgpt(prompt):
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1",
         messages=[{"role": "system", "content": "You are PaperBot, an AI assistant for academic paper analysis."},
                   {"role": "user", "content": prompt}],
-        temperature=0.5
+        temperature=0
     )
     return response.choices[0].message.content
-
-# 안전한 폴더명 생성 함수 (한글 및 특수문자 제거)
-def sanitize_folder_name(folder_name):
-    """폴더명에서 한글 및 특수문자 제거"""
-    folder_name = re.sub(r'[가-힣]', '', folder_name)  # 한글 제거
-    folder_name = re.sub(r'[<>:"/\\|?*]', '', folder_name)  # Windows에서 문제되는 문자 제거
-    folder_name = folder_name.strip()  # 앞뒤 공백 제거
-    return folder_name[:100]  # 너무 길면 100자로 제한
-
-# 안전한 파일명 생성 함수 (한글 및 특수문자 제거)
-def sanitize_filename(filename):
-    """파일명에서 한글 및 특수문자 제거 및 길이 제한"""
-    filename = re.sub(r'[가-힣]', '', filename)  # 한글 제거
-    filename = re.sub(r'[<>:"/\\|?*]', '', filename)  # Windows 문제 문자 제거
-    filename = filename.strip()  # 앞뒤 공백 제거
-    return filename[:200]  # 최대 길이 제한
-
-def copy_to_classification_folders(paper_file_path, categories):
-    """논문을 해당하는 모든 분류 폴더로 복사"""
-    base_filename = sanitize_filename(os.path.basename(paper_file_path))  # 안전한 파일명으로 변경
-
-    for category in categories:
-        raw_folder_name = classification_criteria[int(category)-1].split(') ')[1].split(':')[0]
-        folder_name = sanitize_folder_name(f"{category}) {raw_folder_name}")  # 폴더명 정리
-        category_folder = os.path.join(OUTPUT_FOLDER, folder_name)
-        os.makedirs(category_folder, exist_ok=True)  # 폴더 생성 (이미 있으면 생략)
-
-        dest_file_path = os.path.join(category_folder, base_filename)  # 새로운 파일 경로
-        shutil.copy(paper_file_path, dest_file_path)
-        print(f"📂 {paper_file_path} → {category_folder}에 복사 완료!")
-
-# 🧐 ChatGPT 응답에서 분류번호 추출
+    
+# ChatGPT 응답에서 분류번호 추출
 def extract_categories_from_result(result_text):
     match = re.search(r"분류번호:\s*([\d, )]+)", result_text)
     if match:
@@ -136,7 +114,60 @@ def extract_categories_from_result(result_text):
         return categories
     return []
 
-# 🚀 폴더 내 모든 논문을 분석 및 분류
+#  폴더 내 모든 논문을 분석 및 분류
+def extract_year_from_filename(filename):
+    """파일 이름에서 (YYYY) 형식의 연도를 추출"""
+    match = re.match(r"\(\s*([^\)]+)\)", filename)  # 괄호 안 내용 추출
+    if match:
+        content = match.group(1)
+        digits = re.findall(r"\d{4}", content)       # 4자리 숫자만 찾기
+        if digits:
+            return digits[0]                         # 첫 번째 연도만 사용
+    return "Unknown"
+
+def extract_classification_and_analysis(result_text):
+    """ChatGPT 응답에서 분류번호들과 분석 내용 추출"""
+
+
+    # 1. 복합 분류번호 (예: 1-2), 3-2), 13)) 모두 인식
+    classification_matches = re.findall(r"\b(\d{1,2}(?:-\d+)?\))", result_text)
+    classification = classification_matches if classification_matches else ["Not found"]
+
+    # 2. 분석 내용 추출
+    analysis_match = re.search(r"발견 혹은 성과:\s*([\s\S]+?)(?:\n\d{1,2}(?:-\d+)?\)|\Z)", result_text)
+    analysis = analysis_match.group(1).strip() if analysis_match else "Not found"
+
+    return classification, analysis
+
+def clean_title_from_filename(filename):
+    """파일명에서 한글 및 특수문자 제거하고 제목 추정"""
+    name = filename.replace(".pdf", "")
+    # 괄호 안 숫자 제거 (연도)
+    name = re.sub(r"\(\d{4}\)", "", name)
+    # 한글 제거
+    name = re.sub(r"[가-힣]", "", name)
+    # 특수기호 제거
+    name = re.sub(r"[^\w\s\-]", "", name)
+    return name.strip()
+
+def get_citation_count(title):
+    url = "https://api.semanticscholar.org/graph/v1/paper/search"
+    params = {
+        "query": title,
+        "fields": "title,citationCount",
+        "limit": 1
+    }
+    headers = {"User-Agent": "PaperBot"}
+    try:
+        response = requests.get(url, params=params, headers=headers)
+        response.raise_for_status()
+        results = response.json()
+        if results.get("data"):
+            return results["data"][0].get("citationCount", 0)
+    except Exception as e:
+        print(f"❌ 인용 검색 오류: {e}")
+    return 0
+
 def analyze_all_papers():
     results_json = []
     results_txt = []
@@ -148,7 +179,6 @@ def analyze_all_papers():
             file_path = os.path.join(PAPER_FOLDER_PATH, filename)
             print(f"\n📄 분석 중: {filename}")
 
-            #extract_text = extract_abstract_from_pdf(file_path)
             extract_text = extract_first_300_words(file_path)
             prompt = generate_prompt(extract_text)
             result = ask_chatgpt(prompt)
@@ -156,18 +186,26 @@ def analyze_all_papers():
             print("\n📌 논문 분석 결과:")
             print(result)
 
-            # JSON 결과 저장
-            results_json.append({"filename": filename, "analysis": result})
+            # 분류번호와 분석 내용 추출
+            classification, analysis = extract_classification_and_analysis(result)
+
+            # 파일명에서 연도 추출
+            year = extract_year_from_filename(filename)
+
+            # 인용횟수 추출
+            #clean_title = clean_title_from_filename(filename)
+            #citation_count = get_citation_count(clean_title)
+            
+            results_json.append({
+                "filename": filename,
+                "year": year,
+                "classification": classification,
+                "analysis": analysis,
+                #"citations": citation_count    
+            })
 
             # TXT 결과 저장
-            results_txt.append(f"\n📄 논문: {filename}\n{result}\n{'-'*80}\n")
-
-            # 📂 논문 분류 폴더로 복사
-            categories = extract_categories_from_result(result)
-            if categories:
-                copy_to_classification_folders(file_path, categories)
-            else:
-                print("⚠ 분류 정보를 찾을 수 없어 복사하지 않음.")
+            results_txt.append(f"\n📄 논문: {filename} ({year})\n분류: {classification}\n{analysis}\n{'-'*80}\n")
 
     # JSON 파일 저장
     with open(RESULT_JSON_PATH, "w", encoding="utf-8") as f:
@@ -176,6 +214,10 @@ def analyze_all_papers():
     # TXT 파일 저장
     with open(RESULT_TXT_PATH, "w", encoding="utf-8") as f:
         f.writelines(results_txt)
+
+    print("\n✅ 모든 논문 분석 완료!")
+    print(f"📜 분석 결과 JSON 저장: {RESULT_JSON_PATH}")
+    print(f"📄 분석 결과 TXT 저장: {RESULT_TXT_PATH}")
 
     print("\n✅ 모든 논문 분석 완료!")
     print(f"📜 분석 결과 JSON 저장: {RESULT_JSON_PATH}")
